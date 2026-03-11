@@ -1,0 +1,5 @@
+# Streamlit Travel App Dependencies
+streamlit>=1.46.0
+langchain-openai>=0.3.3
+python-dotenv>=1.1.0
+requests>=2.32.4

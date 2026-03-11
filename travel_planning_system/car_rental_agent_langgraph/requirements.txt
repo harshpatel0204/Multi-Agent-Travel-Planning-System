@@ -1,0 +1,17 @@
+# Car Rental Agent Dependencies (LangGraph)
+langgraph>=0.6.0
+langchain>=0.3.26
+langchain-core>=0.3.64
+langchain-openai>=0.3.3
+fastapi>=0.115.13
+uvicorn[standard]>=0.34.2
+pydantic>=2.11.7
+python-dotenv>=1.1.0
+requests>=2.32.4
+httpx>=0.28.1
+
+python-jose[cryptography]>=3.4.0
+pyasn1>=0.4.1,<0.7.0
+
+# A2A Protocol (for advanced integrations)
+a2a-sdk>=0.2.13

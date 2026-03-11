@@ -1,0 +1,14 @@
+# Travel Planner Agent Dependencies (Google ADK)
+google-genai>=1.22.0
+google-adk>=1.4.2
+langchain-openai>=0.3.3
+fastapi>=0.115.13
+uvicorn[standard]>=0.34.2
+pydantic>=2.11.7
+python-dotenv>=1.1.0
+requests>=2.32.4
+httpx>=0.28.1
+nest-asyncio>=1.6.0
+
+# A2A Protocol
+a2a-sdk>=0.2.13
