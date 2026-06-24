@@ -38,7 +38,10 @@ async def chat(request: ChatRequest) -> ChatResponse:
         raise HTTPException(status_code=500, detail="Hotel booking agent not initialized")
     
     try:
-        response = hotel_booking_agent.invoke(request.message)
+        # Use invoke_async() so CrewAI's kickoff_async() is awaited correctly
+        # inside FastAPI's running event loop (crew.kickoff() raises an error
+        # when called synchronously from async code).
+        response = await hotel_booking_agent.invoke_async(request.message)
         return ChatResponse(response=response)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing chat request: {str(e)}")

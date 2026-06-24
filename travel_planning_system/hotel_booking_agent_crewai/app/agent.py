@@ -190,8 +190,8 @@ class HotelBookingAgent:
             llm=self.llm,
         )
 
-    def invoke(self, question: str) -> str:
-        """Kicks off the crew to answer a hotel booking question."""
+    def _build_crew(self, question: str):
+        """Build the crew and task for a hotel booking question."""
         task_description = (
             f"MANDATORY: You MUST use the Hotel Search Tool to search for hotels for the user's request: '{question}'. "
             f"Today's date is {date.today().strftime('%Y-%m-%d')}. "
@@ -222,6 +222,18 @@ class HotelBookingAgent:
             process=Process.sequential,
             verbose=True,
         )
+        return crew
+
+    def invoke(self, question: str) -> str:
+        """Synchronous entry point (use only outside an async event loop)."""
+        crew = self._build_crew(question)
         result = crew.kickoff()
         print(f"Hotel response CREWAI: {result.raw}")
         return result.raw
+
+    async def invoke_async(self, question: str) -> str:
+        """Async entry point — safe to call from FastAPI / any async context."""
+        crew = self._build_crew(question)
+        result = await crew.kickoff_async()
+        print(f"Hotel response CREWAI (async): {result.raw}")
+        return result.raw
