@@ -124,3 +124,11 @@ merging_index/
 *.sqlite
 *.sqlite3
 *.db-journal 
+
+# start_all.ps1 / start_all.py runtime PID tracking files
+.running_pids
+.running_pids.json
+
+*.md
+start_all.py
+stop_all.py
