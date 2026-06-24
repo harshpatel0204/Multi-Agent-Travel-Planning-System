@@ -132,3 +132,5 @@ merging_index/
 *.md
 start_all.py
 stop_all.py
+run_tests.py
+test_live.py
