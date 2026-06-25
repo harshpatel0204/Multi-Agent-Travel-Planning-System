@@ -129,6 +129,9 @@ merging_index/
 .running_pids
 .running_pids.json
 
+# RoamAI Streamlit on-disk chat history
+.sessions/
+
 *.md
 start_all.py
 stop_all.py

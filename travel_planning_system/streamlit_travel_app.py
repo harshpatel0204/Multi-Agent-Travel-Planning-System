@@ -13,8 +13,50 @@ from datetime import datetime
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 import re
+import uuid
 
 load_dotenv()
+
+# ══════════════════════════════════════════════════════════════════════════════
+# On-disk Chat History Persistence
+# ══════════════════════════════════════════════════════════════════════════════
+
+APP_DIR = os.path.dirname(os.path.abspath(__file__))
+SESSIONS_DIR = os.path.join(APP_DIR, ".sessions")
+HISTORY_PATH = os.path.join(SESSIONS_DIR, "history.json")
+
+
+def load_history() -> list:
+    """Load saved chat sessions from disk (newest first). Returns [] if missing."""
+    try:
+        with open(HISTORY_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            return data if isinstance(data, list) else []
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return []
+
+
+def _write_history(history: list):
+    """Persist the full history list to disk."""
+    os.makedirs(SESSIONS_DIR, exist_ok=True)
+    with open(HISTORY_PATH, "w", encoding="utf-8") as f:
+        json.dump(history, f, ensure_ascii=False, indent=2)
+
+
+def save_session(session: dict) -> list:
+    """Prepend a chat session to history and persist. Returns the updated list."""
+    history = [s for s in load_history() if s.get("id") != session.get("id")]
+    history.insert(0, session)  # newest first
+    _write_history(history)
+    return history
+
+
+def delete_session(session_id: str) -> list:
+    """Remove a session by id and persist. Returns the updated list."""
+    history = [s for s in load_history() if s.get("id") != session_id]
+    _write_history(history)
+    return history
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Conversational Q&A Flow — 8 Question Slots
@@ -153,22 +195,6 @@ class TravelPlannerApp:
             return self.llm.invoke(prompt).content
         except Exception as e:
             return f"❌ LLM error: {e}"
-
-    # ── Agent Health ──────────────────────────────────────────────────────────
-
-    def check_status(self) -> dict:
-        status = {}
-        for name, url in [
-            ("hotel",      self.hotel_url),
-            ("car_rental", self.car_url),
-            ("currency",   self.currency_url),
-        ]:
-            try:
-                r = requests.get(f"{url}/health", timeout=5)
-                status[name] = "🟢 Active" if r.status_code == 200 else "🔴 Error"
-            except Exception:
-                status[name] = "⚪ Offline"
-        return status
 
     # ── Agent Queries ─────────────────────────────────────────────────────────
 
@@ -477,27 +503,6 @@ def generate_pdf_report(
 # UI Rendering Helpers
 # ══════════════════════════════════════════════════════════════════════════════
 
-def render_agent_badge(name: str, status_text: str):
-    if "🟢" in status_text or "Active" in status_text:
-        color, bg = "#10B981", "rgba(16,185,129,0.08)"
-        dot_style = "animation:pulse 2s infinite;"
-    elif "🔴" in status_text or "Error" in status_text:
-        color, bg, dot_style = "#EF4444", "rgba(239,68,68,0.08)", ""
-    else:
-        color, bg, dot_style = "#9CA3AF", "rgba(156,163,175,0.08)", ""
-
-    clean = status_text.replace('🟢','').replace('🔴','').replace('⚪','').strip()
-    st.markdown(f"""
-        <div style="display:flex;justify-content:space-between;align-items:center;
-                    padding:0.5rem 0.75rem;border-radius:10px;background:{bg};
-                    border:1px solid {color}30;margin-bottom:0.5rem;">
-            <span style="font-weight:500;font-size:0.87rem;">{name}</span>
-            <span style="color:{color};font-size:0.77rem;font-weight:700;">
-                <span style="{dot_style}">●</span>&nbsp;{clean}
-            </span>
-        </div>""", unsafe_allow_html=True)
-
-
 def parse_hotel_response(hotel_response: str) -> list | None:
     if not hotel_response or not isinstance(hotel_response, str):
         return None
@@ -607,10 +612,82 @@ def init_state():
         "plan_data":      None,   # dict with generated plan + agent responses
         "generating":     False,  # True after chat_done, before plan_data ready
         "pdf_bytes":      None,   # cached PDF bytes once generated
+        "current_session_id": None,  # id of the active/saved chat session
     }
     for k, v in defaults.items():
         if k not in st.session_state:
             st.session_state[k] = v
+
+
+# Chat-related session keys cleared when starting a new chat
+CHAT_STATE_KEYS = [
+    "messages", "answers", "q_idx", "chat_done", "stream_pending",
+    "pending_prompt", "plan_data", "generating", "pdf_bytes",
+    "current_session_id",
+]
+
+
+def reset_chat():
+    """Clear the active conversation so a fresh chat can begin."""
+    for k in CHAT_STATE_KEYS:
+        st.session_state.pop(k, None)
+
+
+def restore_session(s: dict):
+    """Load a saved chat session back into the active view."""
+    st.session_state.messages           = s.get("messages", [])
+    st.session_state.answers            = s.get("answers", {})
+    st.session_state.plan_data          = s.get("plan_data")
+    st.session_state.q_idx              = len(QUESTION_KEYS)
+    st.session_state.chat_done          = True
+    st.session_state.generating         = False
+    st.session_state.stream_pending     = False
+    st.session_state.pending_prompt     = ""
+    st.session_state.pdf_bytes          = None
+    st.session_state.current_session_id = s.get("id")
+
+
+def render_sidebar():
+    """Left panel: RoamAI branding, New Chat, and persistent chat history."""
+    with st.sidebar:
+        # Logo + title + subtitle
+        st.markdown("""
+            <div style="text-align:center;padding:0.4rem 0 0.2rem;">
+                <div style="font-size:2.6rem;line-height:1;">✈️</div>
+                <div class="gradient-text" style="font-size:1.7rem;">RoamAI</div>
+                <div class="subtitle-text" style="font-size:0.85rem;">
+                    AI-Powered Travel Concierge
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
+
+        st.markdown("---")
+
+        if st.button("➕  New Chat", use_container_width=True, type="primary"):
+            reset_chat()
+            st.rerun()
+
+        st.markdown("### 🕘 Chat History")
+        history = load_history()
+        if not history:
+            st.caption("Your past travel plans will appear here.")
+            return
+
+        active_id = st.session_state.get("current_session_id")
+        for s in history:
+            label = f"{s.get('destination', 'Trip')} · {s.get('created_at', '')[:10]}"
+            col_open, col_del = st.columns([0.82, 0.18])
+            if col_open.button(
+                label, key=f"hist_{s['id']}", use_container_width=True,
+                type="secondary" if s["id"] != active_id else "primary",
+            ):
+                restore_session(s)
+                st.rerun()
+            if col_del.button("🗑", key=f"del_{s['id']}", help="Delete this plan"):
+                delete_session(s["id"])
+                if active_id == s["id"]:
+                    reset_chat()
+                st.rerun()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -787,33 +864,7 @@ def main():
     planner: TravelPlannerApp = st.session_state.planner
 
     # ── Sidebar ───────────────────────────────────────────────────────────────
-    with st.sidebar:
-        st.markdown(
-            "<div style='text-align:center;font-size:2.5rem;padding:0.6rem 0;'>✈️</div>",
-            unsafe_allow_html=True,
-        )
-        st.markdown("### 🤖 Agent Network Status")
-        st.caption("Real-time telemetry of specialist agents:")
-        for agent, status_text in planner.check_status().items():
-            render_agent_badge(agent.replace('_', ' ').title(), status_text)
-
-        st.markdown("""
-            <div class="sidebar-info-card">
-                <div class="sidebar-info-title">ℹ️ RoamAI Architecture</div>
-                <div class="sidebar-info-item"><b>Hotel Booking Agent</b><br>CrewAI + GPT-4o-mini</div>
-                <div class="sidebar-info-item"><b>Car Rental Agent</b><br>LangGraph + GPT-4o-mini</div>
-                <div class="sidebar-info-item"><b>Currency Agent</b><br>LangGraph + Frankfurter API</div>
-                <div class="sidebar-info-item"><b>RoamAI Orchestrator</b><br>LangChain Coordinator Core</div>
-            </div>
-        """, unsafe_allow_html=True)
-
-        st.markdown("---")
-        if st.button("🔄 Start Over", use_container_width=True):
-            for k in ["messages", "answers", "q_idx", "chat_done",
-                      "stream_pending", "pending_prompt", "plan_data",
-                      "generating", "pdf_bytes"]:
-                st.session_state.pop(k, None)
-            st.rerun()
+    render_sidebar()
 
     # ══════════════════════════════════════════════════════════════════════════
     # Conversational Chat UI
@@ -964,14 +1015,27 @@ def main():
                 label="✨ Your travel plan is ready!", state="complete", expanded=False
             )
 
-        st.session_state.plan_data = {
+        plan_data = {
             "plan":          plan,
             "hotel_resp":    hotel_resp,
             "car_resp":      car_resp,
             "currency_resp": currency_resp,
             "car_needed":    car_needed,
         }
+        st.session_state.plan_data = plan_data
         st.session_state.generating = False
+
+        # Persist this completed conversation to on-disk history
+        session_id = st.session_state.get("current_session_id") or uuid.uuid4().hex
+        st.session_state.current_session_id = session_id
+        save_session({
+            "id":         session_id,
+            "destination": answers.get("destination", "Trip"),
+            "created_at":  datetime.now().isoformat(timespec="seconds"),
+            "answers":     answers,
+            "messages":    st.session_state.messages,
+            "plan_data":   plan_data,
+        })
         st.rerun()
 
     # ══════════════════════════════════════════════════════════════════════════
