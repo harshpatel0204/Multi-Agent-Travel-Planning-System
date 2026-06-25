@@ -277,9 +277,9 @@ def generate_pdf_report(
         text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)
         text = re.sub(r'\*(.*?)\*', r'\1', text)
         text = re.sub(r'`(.*?)`', r'\1', text)
-        # Remove emoji / supplementary plane pictographics
+        # Remove emoji / supplementary plane pictographics + variation selectors
         text = re.sub(
-            r'[\U0001F000-\U0001FFFF\U00002600-\U000027FF]+',
+            r'[\U0001F000-\U0001FFFF\U00002600-\U000027FF\uFE00-\uFE0F]+',
             '', text
         )
         # Normalise common Unicode punctuation to ASCII equivalents
