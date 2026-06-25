@@ -213,16 +213,16 @@ Specialized agent for currency conversions and exchange rates.
 
 ---
 
-### 5. **Streamlit Web Interface**
+### 5. **Streamlit Web Interface** (RoamAI)
 **Location**: `streamlit_travel_app.py`
 
-User-friendly web application for interactive travel planning.
+A conversational "RoamAI" web app for interactive travel planning.
 
 **Features**:
-- Agent health status dashboard
-- Interactive travel queries
-- Real-time agent status monitoring
-- Multi-agent coordination display
+- Conversational chat flow — the AI streams trip questions one at a time and collects answers
+- Auto-generates a full itinerary by coordinating the hotel, car-rental, and currency agents
+- Persistent chat history (saved on disk to `.sessions/history.json`) with New Chat / restore / delete
+- Downloadable, branded PDF travel report (`generate_pdf_report`, requires `fpdf2`)
 
 **Port**: 8501 (default Streamlit)
 
